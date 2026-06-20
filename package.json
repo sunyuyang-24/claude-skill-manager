@@ -1,6 +1,6 @@
 {
   "name": "claude-skill-manager",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Standalone desktop manager for Claude Code skills — view, search, enable/disable skills per-project or globally",
   "main": "main.js",
   "bin": {
