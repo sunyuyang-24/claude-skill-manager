@@ -926,6 +926,35 @@ function renderDetail(skill) {
   }
 }
 
+function chunkContent(text, minSize = 200) {
+  const parts = text.split(/\n\n+/);
+  const chunks = [];
+  let acc = '';
+  for (const part of parts) {
+    if (acc && acc.length + part.length > 2000) {
+      chunks.push(acc);
+      acc = part;
+    } else {
+      acc = acc ? acc + '\n\n' + part : part;
+    }
+  }
+  if (acc) chunks.push(acc);
+  // Split oversized chunks at sentence boundaries
+  const result = [];
+  for (const c of chunks) {
+    if (c.length <= 2000) { result.push(c); continue; }
+    let rest = c;
+    while (rest.length > 2000) {
+      const cutAt = rest.lastIndexOf('. ', 2000);
+      const split = cutAt > 1500 ? cutAt + 1 : 2000;
+      result.push(rest.slice(0, split));
+      rest = rest.slice(split).trim();
+    }
+    if (rest) result.push(rest);
+  }
+  return result;
+}
+
 async function translateContent(rawContent) {
   const btnTrans = document.getElementById('detailBtnTranslate');
   const body = document.getElementById('detailBody');
@@ -938,7 +967,6 @@ async function translateContent(rawContent) {
     return;
   }
 
-  // Check cache
   if (translationCache.has(rawContent)) {
     state.translatedContent = translationCache.get(rawContent);
     state.isTranslated = true;
@@ -948,27 +976,43 @@ async function translateContent(rawContent) {
   }
 
   btnTrans.disabled = true;
-  btnTrans.textContent = TR_LABEL.loading;
+  const chunks = chunkContent(rawContent);
+  const total = chunks.length;
+
   try {
-    const res = await fetch('/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: rawContent, targetLang: 'zh-CN', sourceLang: 'en' }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      showToast('翻译失败: ' + data.message, 'error');
-      btnTrans.disabled = false;
-      btnTrans.textContent = TR_LABEL.idle;
-      return;
+    // If only 1-2 chunks, just use the single endpoint
+    if (total <= 2) {
+      btnTrans.textContent = TR_LABEL.loading;
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawContent, targetLang: 'zh-CN', sourceLang: 'en' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.message);
+      translationCache.set(rawContent, data.translated);
+      state.translatedContent = data.translated;
+      state.isTranslated = true;
+      body.innerHTML = renderMarkdown(data.translated);
+      btnTrans.textContent = TR_LABEL.done;
+    } else {
+      btnTrans.textContent = `⏳ 翻译中 0/${total}...`;
+      const res = await fetch('/api/translate-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts: chunks, targetLang: 'zh-CN', sourceLang: 'en' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.message);
+      const translated = data.translations.join('\n\n');
+      translationCache.set(rawContent, translated);
+      state.translatedContent = translated;
+      state.isTranslated = true;
+      body.innerHTML = renderMarkdown(translated);
+      btnTrans.textContent = TR_LABEL.done;
     }
-    translationCache.set(rawContent, data.translated);
-    state.translatedContent = data.translated;
-    state.isTranslated = true;
-    body.innerHTML = renderMarkdown(data.translated);
-    btnTrans.textContent = TR_LABEL.done;
   } catch (e) {
-    showToast('翻译请求失败', 'error');
+    showToast('翻译失败: ' + e.message, 'error');
     btnTrans.textContent = TR_LABEL.idle;
   }
   btnTrans.disabled = false;
