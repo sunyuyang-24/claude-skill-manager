@@ -112,6 +112,16 @@ input { font: inherit; }
 .filter-radio.active { color: var(--accent); font-weight: 600; }
 .filter-radio input { display: none; }
 
+.drive-btn {
+  padding: 4px 10px; font-size: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; font: inherit;
+}
+.drive-btn:hover { border-color: var(--accent); color: var(--accent); }
+.drive-btn.common { font-size: 11px; color: var(--text-muted); }
+.drive-btn.common:hover { color: var(--accent); }
+
 .btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 10px 16px; border-radius: var(--radius);
@@ -695,7 +705,12 @@ const state = {
   },
   view: 'list',
   selectedSkill: null,
+  isTranslated: false,
+  translatedContent: null,
 };
+
+const TR_LABEL = { idle: '🌐 翻译为中文', loading: '⏳ 翻译中...', done: '🔄 显示原文' };
+const translationCache = new Map();
 
 // ── Toast ────────────────────────────────────────────────────────────
 function showToast(message, type = 'info') {
@@ -875,11 +890,11 @@ function renderDetail(skill) {
   document.getElementById('detailBody').classList.remove('loading');
   const rawContent = skill.skillMdBody || skill.skillMdContent || '';
   state.translatedContent = null;
+  state.isTranslated = false;
   document.getElementById('detailBody').innerHTML = renderMarkdown(rawContent);
 
-  // Translate button
   const btnTrans = document.getElementById('detailBtnTranslate');
-  btnTrans.textContent = '🌐 翻译为中文';
+  btnTrans.textContent = TR_LABEL.idle;
   btnTrans.onclick = () => translateContent(rawContent);
   btnTrans.disabled = false;
   btnTrans.style.display = '';
@@ -915,17 +930,25 @@ async function translateContent(rawContent) {
   const btnTrans = document.getElementById('detailBtnTranslate');
   const body = document.getElementById('detailBody');
 
-  // If already showing translated, revert to original
-  if (state.translatedContent) {
+  if (state.isTranslated) {
     body.innerHTML = renderMarkdown(rawContent);
+    state.isTranslated = false;
     state.translatedContent = null;
-    btnTrans.textContent = '🌐 翻译为中文';
+    btnTrans.textContent = TR_LABEL.idle;
     return;
   }
 
-  // Otherwise translate
+  // Check cache
+  if (translationCache.has(rawContent)) {
+    state.translatedContent = translationCache.get(rawContent);
+    state.isTranslated = true;
+    body.innerHTML = renderMarkdown(state.translatedContent);
+    btnTrans.textContent = TR_LABEL.done;
+    return;
+  }
+
   btnTrans.disabled = true;
-  btnTrans.textContent = '⏳ 翻译中...';
+  btnTrans.textContent = TR_LABEL.loading;
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
@@ -936,15 +959,17 @@ async function translateContent(rawContent) {
     if (data.error) {
       showToast('翻译失败: ' + data.message, 'error');
       btnTrans.disabled = false;
-      btnTrans.textContent = '🌐 翻译为中文';
+      btnTrans.textContent = TR_LABEL.idle;
       return;
     }
+    translationCache.set(rawContent, data.translated);
     state.translatedContent = data.translated;
+    state.isTranslated = true;
     body.innerHTML = renderMarkdown(data.translated);
-    btnTrans.textContent = '🔄 显示原文';
+    btnTrans.textContent = TR_LABEL.done;
   } catch (e) {
     showToast('翻译请求失败', 'error');
-    btnTrans.textContent = '🌐 翻译为中文';
+    btnTrans.textContent = TR_LABEL.idle;
   }
   btnTrans.disabled = false;
 }
@@ -969,6 +994,7 @@ function closeDetail() {
   state.view = 'list';
   state.selectedSkill = null;
   state.selectedSkillData = null;
+  state.isTranslated = false;
   state.translatedContent = null;
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('detailPanel').classList.remove('show');
@@ -1092,68 +1118,44 @@ function detectDrives() {
   return drives;
 }
 
+function driveButton(label, dataPath, isCommon) {
+  const btn = document.createElement('button');
+  btn.className = 'drive-btn' + (isCommon ? ' common' : '');
+  btn.textContent = label;
+  btn.dataset.path = dataPath;
+  btn.title = dataPath;
+  return btn;
+}
+
 function populateDriveButtons() {
   const container = document.getElementById('driveButtons');
   container.querySelectorAll('.drive-btn').forEach(el => el.remove());
 
   const drives = detectDrives();
+  for (const d of drives) {
+    container.appendChild(driveButton(d.letter + ':', d.path, false));
+  }
 
-  // Build common paths from config
   const homedir = state.config.userSkillsDir ? state.config.userSkillsDir.replace(/\\.claude\\skills$/, '') : '';
-  const commonPaths = [];
   if (state.config.userSkillsDir) {
-    commonPaths.push({ label: '用户 Skills', path: state.config.userSkillsDir });
+    container.appendChild(driveButton('用户 Skills', state.config.userSkillsDir, true));
   }
   if (state.config.agentsSkillsDir) {
-    commonPaths.push({ label: 'Agent Skills', path: state.config.agentsSkillsDir });
+    container.appendChild(driveButton('Agent Skills', state.config.agentsSkillsDir, true));
   }
   if (homedir) {
-    commonPaths.push({ label: '插件市场', path: homedir + '\\.claude\\plugins\\marketplaces' });
+    container.appendChild(driveButton('插件市场', homedir + '\\.claude\\plugins\\marketplaces', true));
   }
 
-  for (const d of drives) {
-    const btn = document.createElement('button');
-    btn.className = 'drive-btn';
-    btn.style.cssText = 'padding:4px 10px;font-size:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);cursor:pointer;transition:all 0.15s';
-    btn.textContent = d.letter + ':';
-    btn.title = d.path;
-    btn.addEventListener('click', () => {
-      document.getElementById('scanPathInput').value = d.path;
+  // Single delegated click handler (set once if not already bound)
+  if (!container._delegated) {
+    container._delegated = true;
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('.drive-btn');
+      if (btn && btn.dataset.path) {
+        document.getElementById('scanPathInput').value = btn.dataset.path;
+      }
     });
-    btn.addEventListener('mouseenter', () => {
-      btn.style.borderColor = 'var(--accent)';
-      btn.style.color = 'var(--accent)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.borderColor = 'var(--border)';
-      btn.style.color = 'var(--text-secondary)';
-    });
-    container.appendChild(btn);
-  }
-
-  for (const cp of commonPaths) {
-    const sep = document.createElement('span');
-    sep.textContent = '·';
-    sep.style.cssText = 'color:var(--text-muted);line-height:28px;margin:0 2px';
-    container.appendChild(sep);
-
-    const btn = document.createElement('button');
-    btn.className = 'drive-btn';
-    btn.style.cssText = 'padding:4px 10px;font-size:11px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;transition:all 0.15s';
-    btn.textContent = cp.label;
-    btn.title = cp.path;
-    btn.addEventListener('click', () => {
-      document.getElementById('scanPathInput').value = cp.path;
-    });
-    btn.addEventListener('mouseenter', () => {
-      btn.style.borderColor = 'var(--accent)';
-      btn.style.color = 'var(--accent)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.borderColor = 'var(--border)';
-      btn.style.color = 'var(--text-muted)';
-    });
-    container.appendChild(btn);
   }
 }
 
