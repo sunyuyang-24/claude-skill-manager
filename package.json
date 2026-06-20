@@ -1,0 +1,38 @@
+{
+  "name": "claude-skill-manager",
+  "version": "1.0.0",
+  "description": "Standalone desktop manager for Claude Code skills — view, search, enable/disable skills per-project or globally",
+  "main": "main.js",
+  "bin": {
+    "skill-manager": "./skill-manager.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "start:cli": "node skill-manager.js",
+    "build": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.claude.skill-manager",
+    "productName": "Claude Skill Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "skill-manager.js",
+      "lib/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": null
+    }
+  },
+  "keywords": ["claude-code", "skill-manager", "claude", "skills"],
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

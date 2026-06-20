@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Skill Manager</title>
+<style>
+:root {
+  --bg-primary: #0f0f1a;
+  --bg-secondary: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-card-hover: #1e3a60;
+  --bg-detail: #12121f;
+  --text-primary: #e4e4ec;
+  --text-secondary: #9898b0;
+  --text-muted: #6b6b80;
+  --accent: #e94560;
+  --accent-hover: #ff6b85;
+  --success: #00c853;
+  --warning: #ffc107;
+  --border: #2a2a44;
+  --shadow: rgba(0,0,0,0.4);
+  --radius: 8px;
+  --radius-lg: 12px;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
+input { font: inherit; }
+
+/* ── Sidebar ──────────────────────────────────────── */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 20px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.sidebar h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+.sidebar h1 span { color: var(--accent); }
+.search-box {
+  position: relative;
+}
+.search-box input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-box input:focus { border-color: var(--accent); }
+.search-box .search-icon {
+  position: absolute; left: 12px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.filter-group { display: flex; flex-direction: column; gap: 8px; }
+.filter-group label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.filter-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+.filter-chip:hover { background: var(--bg-card); color: var(--text-primary); }
+.filter-chip.active { background: var(--bg-card); color: var(--accent); font-weight: 600; }
+.filter-chip .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filter-radio {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px;
+  color: var(--text-secondary); transition: background 0.15s;
+}
+.filter-radio:hover { background: var(--bg-card); }
+.filter-radio.active { color: var(--accent); font-weight: 600; }
+.filter-radio input { display: none; }
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 16px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 600;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--bg-card); color: var(--text-secondary); }
+.btn-secondary:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.btn-block { width: 100%; }
+
+.stats {
+  font-size: 12px; color: var(--text-muted); text-align: center;
+  padding: 8px 0; border-top: 1px solid var(--border);
+}
+
+/* ── Main Content ─────────────────────────────────── */
+.main {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+.top-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.top-bar .project-info {
+  font-size: 12px; color: var(--text-muted);
+}
+.top-bar .project-info strong { color: var(--text-secondary); }
+.top-bar .count {
+  font-size: 13px; color: var(--text-secondary);
+}
+
+.skill-grid {
+  flex: 1; overflow-y: auto; padding: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+
+/* ── Skill Card ───────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px var(--shadow);
+  transform: translateY(-1px);
+}
+.card-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.card-name {
+  font-size: 15px; font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.card-version {
+  font-size: 11px; color: var(--text-muted);
+  background: var(--bg-card-hover);
+  padding: 2px 8px; border-radius: 10px;
+  white-space: nowrap;
+}
+.card-desc {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-source {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-muted);
+}
+.card-source .dot { width: 8px; height: 8px; }
+
+.card-actions {
+  display: flex; align-items: center; gap: 10px;
+  padding-top: 8px; border-top: 1px solid var(--border);
+}
+.toggle-group {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-muted);
+}
+.toggle {
+  position: relative; width: 36px; height: 20px; flex-shrink: 0;
+}
+.toggle input { display: none; }
+.toggle .slider {
+  position: absolute; inset: 0;
+  background: var(--border); border-radius: 20px;
+  transition: background 0.2s;
+}
+.toggle .slider::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s;
+}
+.toggle input:checked + .slider { background: var(--success); }
+.toggle input:checked + .slider::after { transform: translateX(16px); }
+.toggle input:disabled + .slider { opacity: 0.4; }
+
+.btn-view {
+  font-size: 12px; color: var(--accent); font-weight: 600;
+  padding: 4px 10px; border-radius: 4px;
+  transition: background 0.15s;
+}
+.btn-view:hover { background: rgba(233,69,96,0.1); }
+
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px;
+  padding: 60px 20px; color: var(--text-muted);
+}
+.empty-state .icon { font-size: 40px; opacity: 0.5; }
+
+/* ── Detail Panel ─────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 50; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+.overlay.show { opacity: 1; pointer-events: all; }
+
+.detail-panel {
+  position: fixed; top: 0; right: -520px; bottom: 0;
+  width: 520px; max-width: 95vw;
+  background: var(--bg-detail);
+  border-left: 1px solid var(--border);
+  z-index: 60;
+  display: flex; flex-direction: column;
+  transition: right 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  box-shadow: -8px 0 30px var(--shadow);
+}
+.detail-panel.show { right: 0; }
+
+.detail-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.detail-header h2 { font-size: 18px; font-weight: 700; }
+.btn-close {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.btn-close:hover { background: var(--bg-card); color: var(--text-primary); }
+
+.detail-meta {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+  flex-shrink: 0;
+}
+.detail-meta .tag {
+  padding: 3px 10px; border-radius: 12px;
+  background: var(--bg-card); font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.detail-body {
+  flex: 1; overflow-y: auto; padding: 24px;
+  line-height: 1.7; font-size: 14px;
+}
+.detail-body.loading {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+}
+
+/* Markdown rendered content */
+.detail-body h1 { font-size: 22px; margin-bottom: 16px; color: var(--text-primary); }
+.detail-body h2 { font-size: 18px; margin: 24px 0 12px; color: var(--text-primary); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.detail-body h3 { font-size: 15px; margin: 18px 0 8px; color: var(--text-primary); }
+.detail-body h4, .detail-body h5, .detail-body h6 {
+  font-size: 14px; margin: 14px 0 6px; color: var(--text-secondary);
+}
+.detail-body p { margin: 8px 0; color: var(--text-secondary); }
+.detail-body strong { color: var(--text-primary); }
+.detail-body code {
+  background: var(--bg-card); padding: 2px 6px;
+  border-radius: 4px; font-family: var(--font-mono);
+  font-size: 12px; color: var(--accent);
+}
+.detail-body pre {
+  background: var(--bg-card); padding: 16px;
+  border-radius: var(--radius); overflow-x: auto;
+  margin: 12px 0; border: 1px solid var(--border);
+}
+.detail-body pre code {
+  background: none; padding: 0; color: var(--text-secondary);
+  font-size: 12px; line-height: 1.6;
+}
+.detail-body ul, .detail-body ol { margin: 8px 0; padding-left: 24px; color: var(--text-secondary); }
+.detail-body li { margin: 4px 0; }
+.detail-body blockquote {
+  border-left: 3px solid var(--accent); margin: 12px 0;
+  padding: 8px 16px; background: rgba(233,69,96,0.05);
+  color: var(--text-secondary); font-style: italic;
+}
+.detail-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.detail-body a { color: var(--accent); text-decoration: none; }
+.detail-body a:hover { text-decoration: underline; }
+.detail-body table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.detail-body th, .detail-body td {
+  padding: 8px 12px; border: 1px solid var(--border);
+  text-align: left; font-size: 13px;
+}
+.detail-body th { background: var(--bg-card); font-weight: 600; color: var(--text-primary); }
+.detail-body td { color: var(--text-secondary); }
+
+.detail-footer {
+  padding: 16px 24px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; flex-shrink: 0;
+}
+
+/* ── Toast container ──────────────────────────────── */
+.toast-container {
+  position: fixed; bottom: 20px; right: 20px;
+  z-index: 100; display: flex; flex-direction: column-reverse;
+  gap: 8px; max-width: 360px;
+}
+.toast {
+  padding: 12px 16px; border-radius: var(--radius);
+  font-size: 13px; line-height: 1.4;
+  animation: slideIn 0.3s ease;
+  box-shadow: 0 4px 16px var(--shadow);
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.toast.success { background: #0d3320; border: 1px solid var(--success); color: #5effa1; }
+.toast.error { background: #330d18; border: 1px solid var(--accent); color: #ff8d9e; }
+.toast.info { background: #0d1f33; border: 1px solid #2196f3; color: #82c4ff; }
+.toast.warning { background: #332a0d; border: 1px solid var(--warning); color: #ffe082; }
+.toast .toast-close { margin-left: auto; cursor: pointer; opacity: 0.6; font-size: 16px; }
+.toast .toast-close:hover { opacity: 1; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Settings modal ───────────────────────────────── */
+.modal {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6); opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.modal.show { opacity: 1; pointer-events: all; }
+.modal-content {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 28px;
+  width: 440px; max-width: 90vw;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.modal-content h2 { font-size: 18px; }
+.modal-content label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+.modal-content input {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-primary);
+  font-size: 13px; outline: none;
+}
+.modal-content input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Spinner ──────────────────────────────────────── */
+.spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <h1>Claude <span>Skill Manager</span></h1>
+
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="搜索 skill 名称或描述..." autocomplete="off">
+  </div>
+
+  <div class="filter-group" id="sourceFilters">
+    <label>Skill 来源</label>
+  </div>
+
+  <div class="filter-group" id="statusFilters">
+    <label>启用状态</label>
+  </div>
+
+  <button class="btn btn-secondary btn-block" id="btnRescan">🔄 重新扫描</button>
+  <button class="btn btn-secondary btn-block" id="btnScanFolder">📂 扫描本地文件夹</button>
+  <button class="btn btn-secondary btn-block" id="btnSettings">⚙️ 设置</button>
+
+  <div class="stats" id="statsLabel">加载中...</div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <div class="top-bar">
+    <div class="project-info">
+      项目：<strong id="projectLabel">未设置</strong>
+    </div>
+    <div class="count" id="countLabel"></div>
+  </div>
+  <div class="skill-grid" id="skillGrid"></div>
+</main>
+
+<!-- Detail overlay + panel -->
+<div class="overlay" id="overlay"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <h2 id="detailName"></h2>
+    <button class="btn-close" id="btnCloseDetail">✕</button>
+  </div>
+  <div class="detail-meta" id="detailMeta"></div>
+  <div class="detail-body loading" id="detailBody">加载中...</div>
+  <div class="detail-footer">
+    <button class="btn btn-primary" id="detailBtnToggleUser"></button>
+    <button class="btn btn-secondary" id="detailBtnToggleProject"></button>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal" id="settingsModal">
+  <div class="modal-content" style="max-height:80vh;overflow-y:auto">
+    <h2>设置</h2>
+    <label for="projectPathInput">项目路径（用于项目级 skill 管理）</label>
+    <input type="text" id="projectPathInput" placeholder="例如: C:\Users\27164\Desktop\my-project" autocomplete="off">
+
+    <label style="margin-top:8px">自定义扫描目录</label>
+    <div id="sourceList" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">
+      <div style="font-size:12px;color:var(--text-muted)">加载中...</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="newSourceInput" placeholder="输入目录路径..." style="flex:1" autocomplete="off">
+      <button class="btn btn-secondary" id="btnAddSource">添加</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary" id="btnCancelSettings">取消</button>
+      <button class="btn btn-primary" id="btnSaveSettings">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scan folder modal -->
+<div class="modal" id="scanModal">
+  <div class="modal-content" style="max-height:80vh;overflow-y:auto">
+    <h2>扫描本地 Skill 文件夹</h2>
+    <label for="scanPathInput">输入文件夹路径，扫描其中包含的 skill</label>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="scanPathInput" placeholder="例如: D:\agent-skills\skills" style="flex:1" autocomplete="off">
+      <button class="btn btn-primary" id="btnDoScan">扫描</button>
+    </div>
+    <div id="scanResults" style="margin-top:12px;max-height:350px;overflow-y:auto">
+      <div style="font-size:12px;color:var(--text-muted)">输入路径后点击扫描</div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" id="btnCloseScan">关闭</button>
+      <button class="btn btn-primary" id="btnAddScanAsSource" disabled>添加为扫描来源</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ── Markdown renderer (lightweight, inline) ───────────────────────────
+function renderMarkdown(md) {
+  if (!md) return '<p><em>No content</em></p>';
+  // Escape HTML in non-code segments
+  const lines = md.split('\n');
+  let html = '';
+  let inCodeBlock = false;
+  let codeContent = '';
+  let codeLang = '';
+  let inList = false;
+  let listType = '';
+
+  function flushList() {
+    if (inList) { html += listType === 'ul' ? '</ul>\n' : '</ol>\n'; inList = false; listType = ''; }
+  }
+
+  function processInline(text) {
+    // code (backticks)
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // bold
+    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // italic
+    text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // links
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    // images
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%">');
+    return text;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Fenced code block
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) {
+        html += `<pre><code class="language-${codeLang}">${escapeHtml(codeContent.trim())}</code></pre>\n`;
+        codeContent = '';
+        codeLang = '';
+        inCodeBlock = false;
+      } else {
+        flushList();
+        codeLang = trimmed.slice(3).trim();
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeContent += line + '\n';
+      continue;
+    }
+
+    // Empty line — close list
+    if (trimmed === '') {
+      flushList();
+      continue;
+    }
+
+    // Headings
+    const hMatch = trimmed.match(/^(#{1,6})\s+(.+)/);
+    if (hMatch) {
+      flushList();
+      const level = hMatch[1].length;
+      html += `<h${level}>${processInline(hMatch[2])}</h${level}>\n`;
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^(---|\*\*\*|___)\s*$/.test(trimmed)) {
+      flushList();
+      html += '<hr>\n';
+      continue;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('>')) {
+      flushList();
+      const qContent = trimmed.slice(1).trim();
+      html += `<blockquote>${processInline(qContent)}</blockquote>\n`;
+      continue;
+    }
+
+    // Unordered list
+    const ulMatch = trimmed.match(/^[-*]\s+(.+)/);
+    if (ulMatch) {
+      if (!inList || listType !== 'ul') { flushList(); html += '<ul>\n'; inList = true; listType = 'ul'; }
+      html += `<li>${processInline(ulMatch[1])}</li>\n`;
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
+    if (olMatch) {
+      if (!inList || listType !== 'ol') { flushList(); html += '<ol>\n'; inList = true; listType = 'ol'; }
+      html += `<li>${processInline(olMatch[1])}</li>\n`;
+      continue;
+    }
+
+    // Table row
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      flushList();
+      const cells = trimmed.slice(1, -1).split('|').map(c => c.trim());
+      const isHeader = lines[i + 1] && lines[i + 1].trim().match(/^\|[\s\-:|]+\|$/);
+      const tag = isHeader ? 'th' : 'td';
+      html += '<tr>' + cells.map(c => `<${tag}>${processInline(c)}</${tag}>`).join('') + '</tr>\n';
+      if (isHeader) { html = html.replace('<tr>', '<thead><tr>').replace('</tr>\n', '</tr></thead><tbody>\n'); i++; }
+      // Close table at next non-table line
+      if (!lines[i + 1] || !lines[i + 1].trim().startsWith('|')) {
+        html = '<table>\n' + html + '</tbody></table>\n';
+      }
+      continue;
+    }
+
+    // Default: paragraph
+    flushList();
+    html += `<p>${processInline(trimmed)}</p>\n`;
+  }
+
+  flushList();
+  if (inCodeBlock) {
+    html += `<pre><code>${escapeHtml(codeContent.trim())}</code></pre>\n`;
+  }
+  return html;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── API Client ──────────────────────────────────────────────────────
+const api = {
+  async getSkills(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetch(`/api/skills${qs ? '?' + qs : ''}`);
+    return res.json();
+  },
+  async getSkill(name) {
+    const res = await fetch(`/api/skills/${encodeURIComponent(name)}`);
+    return res.json();
+  },
+  async enableSkill(name, scope) {
+    const res = await fetch(`/api/skills/${encodeURIComponent(name)}/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope }),
+    });
+    return res.json();
+  },
+  async disableSkill(name, scope) {
+    const res = await fetch(`/api/skills/${encodeURIComponent(name)}/disable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope }),
+    });
+    return res.json();
+  },
+  async scan() {
+    const res = await fetch('/api/scan', { method: 'POST' });
+    return res.json();
+  },
+  async getConfig() {
+    const res = await fetch('/api/config');
+    return res.json();
+  },
+  async updateConfig(data) {
+    const res = await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+};
+
+// ── State ────────────────────────────────────────────────────────────
+const state = {
+  skills: [],
+  sources: [],
+  config: {},
+  filters: {
+    search: '',
+    sources: new Set(),
+    status: 'all', // 'all' | 'enabled' | 'disabled'
+  },
+  view: 'list',
+  selectedSkill: null,
+};
+
+// ── Toast ────────────────────────────────────────────────────────────
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  const icon = { success: '✓', error: '✕', info: 'ℹ', warning: '⚠' }[type] || '';
+  toast.innerHTML = `<span>${icon}</span> <span>${message}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { if (toast.parentElement) toast.remove(); }, 3500);
+}
+
+// ── Render ───────────────────────────────────────────────────────────
+function renderSourceFilters() {
+  const container = document.getElementById('sourceFilters');
+  // Collect unique source types
+  const types = [...new Set(state.skills.map(s => s.sourceType))];
+  // Ensure all current active filters are shown
+  for (const t of state.filters.sources) { if (!types.includes(t)) types.push(t); }
+
+  container.querySelectorAll('.filter-chip').forEach(el => el.remove());
+
+  for (const type of types) {
+    if (type === 'unknown') continue;
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip' + (state.filters.sources.has(type) ? ' active' : '');
+    chip.innerHTML = `<span class="dot" style="background:${sourceColor(type)}"></span>${type}`;
+    chip.addEventListener('click', () => {
+      if (state.filters.sources.has(type)) {
+        state.filters.sources.delete(type);
+      } else {
+        state.filters.sources.add(type);
+      }
+      renderAll();
+    });
+    container.appendChild(chip);
+  }
+}
+
+function renderStatusFilters() {
+  const container = document.getElementById('statusFilters');
+  const options = [
+    { value: 'all', label: '全部' },
+    { value: 'enabled', label: '已启用' },
+    { value: 'disabled', label: '未启用' },
+  ];
+  container.querySelectorAll('.filter-radio').forEach(el => el.remove());
+
+  for (const opt of options) {
+    const div = document.createElement('div');
+    div.className = 'filter-radio' + (state.filters.status === opt.value ? ' active' : '');
+    div.textContent = opt.label;
+    div.addEventListener('click', () => {
+      state.filters.status = opt.value;
+      renderAll();
+    });
+    container.appendChild(div);
+  }
+}
+
+function getFilteredSkills() {
+  let skills = state.skills;
+  if (state.filters.search) {
+    const q = state.filters.search;
+    skills = skills.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      (s.description && s.description.toLowerCase().includes(q))
+    );
+  }
+  if (state.filters.sources.size > 0) {
+    skills = skills.filter(s => state.filters.sources.has(s.sourceType));
+  }
+  if (state.filters.status === 'enabled') {
+    skills = skills.filter(s => s.enabled.user || s.enabled.project);
+  } else if (state.filters.status === 'disabled') {
+    skills = skills.filter(s => !s.enabled.user && !s.enabled.project);
+  }
+  return skills;
+}
+
+function sourceLabel(type) {
+  return type;
+}
+
+function sourceColor(type) {
+  // Deterministic color from string hash
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) {
+    hash = type.charCodeAt(i) + ((hash << 5) - hash);
+    hash = hash & hash; // clamp to 32-bit
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 55%, 50%)`;
+}
+
+function renderSkillGrid() {
+  const grid = document.getElementById('skillGrid');
+  const skills = getFilteredSkills();
+
+  document.getElementById('countLabel').textContent = `共 ${skills.length} 个 skill`;
+
+  if (skills.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📦</div>
+        <div>没有找到匹配的 skill</div>
+        <div style="font-size:12px">尝试调整搜索或筛选条件</div>
+      </div>`;
+    return skills;
+  }
+
+  grid.innerHTML = skills.map(s => `
+    <div class="card" data-name="${escapeHtml(s.name)}">
+      <div class="card-header">
+        <span class="card-name">${escapeHtml(s.displayName || s.name)}</span>
+        ${s.version ? `<span class="card-version">v${escapeHtml(s.version)}</span>` : ''}
+      </div>
+      ${s.displayName ? `<div style="font-size:10px;color:var(--text-muted)">${escapeHtml(s.name)}</div>` : ''}
+      <div class="card-desc">${escapeHtml((s.description || '').slice(0, 200))}</div>
+      <div class="card-source">
+        <span class="dot" style="background:${sourceColor(s.sourceType)}"></span>
+        ${sourceLabel(s.sourceType)}
+        ${s.size ? ` · ${(s.size / 1024).toFixed(1)} KB` : ''}
+      </div>
+      <div class="card-actions">
+        <div class="toggle-group">
+          <span>全局</span>
+          <label class="toggle">
+            <input type="checkbox" ${s.enabled.user ? 'checked' : ''} onchange="handleToggle('${escapeHtml(s.name)}', 'user', this)">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-group">
+          <span>项目</span>
+          <label class="toggle">
+            <input type="checkbox" ${s.enabled.project ? 'checked' : ''} onchange="handleToggle('${escapeHtml(s.name)}', 'project', this)" ${!state.config.projectPath ? 'disabled' : ''}>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="btn-view" onclick="openDetail('${escapeHtml(s.name)}')">查看 →</button>
+      </div>
+    </div>
+  `).join('');
+  return skills;
+}
+
+async function openDetail(name) {
+  state.view = 'detail';
+  state.selectedSkill = name;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('detailPanel').classList.add('show');
+  document.getElementById('detailName').textContent = name;
+  document.getElementById('detailMeta').innerHTML = '';
+  document.getElementById('detailBody').innerHTML = '<div class="spinner"></div>';
+  document.getElementById('detailBody').classList.add('loading');
+
+  try {
+    const skill = await api.getSkill(name);
+    state.selectedSkillData = skill;
+    renderDetail(skill);
+  } catch (e) {
+    document.getElementById('detailBody').innerHTML = '<p style="color:var(--accent)">加载失败</p>';
+    showToast(`加载 "${name}" 失败`, 'error');
+  }
+}
+
+function renderDetail(skill) {
+  document.getElementById('detailName').textContent = skill.displayName || skill.name;
+  document.getElementById('detailBody').classList.remove('loading');
+  document.getElementById('detailBody').innerHTML = renderMarkdown(skill.skillMdBody || skill.skillMdContent || '');
+
+  // Meta tags
+  const meta = document.getElementById('detailMeta');
+  let metaHtml = '';
+  if (skill.sourceType) metaHtml += `<span class="tag">来源：${sourceLabel(skill.sourceType)}</span>`;
+  if (skill.version) metaHtml += `<span class="tag">v${skill.version}</span>`;
+  if (skill.size) metaHtml += `<span class="tag">${(skill.size / 1024).toFixed(1)} KB</span>`;
+  if (skill.enabled.user) metaHtml += `<span class="tag" style="border:1px solid var(--success);color:var(--success)">全局启用</span>`;
+  if (skill.enabled.project) metaHtml += `<span class="tag" style="border:1px solid #2196f3;color:#82c4ff">项目启用</span>`;
+  meta.innerHTML = metaHtml || '<span class="tag">无元数据</span>';
+
+  // Footer buttons
+  const btnUser = document.getElementById('detailBtnToggleUser');
+  const btnProject = document.getElementById('detailBtnToggleProject');
+
+  btnUser.textContent = skill.enabled.user ? '全局禁用' : '全局启用';
+  btnUser.className = skill.enabled.user ? 'btn btn-secondary' : 'btn btn-primary';
+  btnUser.onclick = () => handleDetailToggle(skill.name, 'user', !skill.enabled.user);
+
+  btnProject.textContent = skill.enabled.project ? '项目禁用' : '项目启用';
+  btnProject.className = skill.enabled.project ? 'btn btn-secondary' : 'btn btn-primary';
+  btnProject.onclick = () => handleDetailToggle(skill.name, 'project', !skill.enabled.project);
+  btnProject.disabled = !state.config.projectPath;
+  if (!state.config.projectPath) {
+    btnProject.title = '未设置项目路径，请在设置中配置';
+  }
+}
+
+async function handleDetailToggle(name, scope, enable) {
+  const result = enable
+    ? await api.enableSkill(name, scope)
+    : await api.disableSkill(name, scope);
+
+  if (result.success) {
+    showToast(result.message, 'success');
+    await refreshSkills();
+    // Update detail panel
+    const skill = await api.getSkill(name);
+    renderDetail(skill);
+  } else {
+    showToast(result.message, 'error');
+  }
+}
+
+function closeDetail() {
+  state.view = 'list';
+  state.selectedSkill = null;
+  state.selectedSkillData = null;
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('detailPanel').classList.remove('show');
+}
+
+async function handleToggle(name, scope, checkbox) {
+  const enable = checkbox.checked;
+  checkbox.disabled = true;
+  const result = enable
+    ? await api.enableSkill(name, scope)
+    : await api.disableSkill(name, scope);
+
+  if (result.success) {
+    showToast(result.message, 'success');
+    await refreshSkills();
+  } else {
+    showToast(result.message, 'error');
+    checkbox.checked = !enable; // revert
+  }
+  checkbox.disabled = false;
+}
+
+// ── Settings modal ──────────────────────────────────────────────────
+async function openSettings() {
+  document.getElementById('projectPathInput').value = state.config.projectPath || '';
+  await loadSourceList();
+  document.getElementById('settingsModal').classList.add('show');
+}
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('show');
+}
+
+async function saveSettings() {
+  const projectPath = document.getElementById('projectPathInput').value.trim() || null;
+  try {
+    await api.updateConfig({ projectPath });
+    state.config.projectPath = projectPath;
+    state.config.projectSkillsDir = projectPath ? projectPath + '/.claude/skills' : null;
+    document.getElementById('projectLabel').textContent = projectPath || '未设置';
+    closeSettings();
+    showToast('设置已保存', 'success');
+    await refreshSkills();
+  } catch (e) {
+    showToast('保存设置失败: ' + e.message, 'error');
+  }
+}
+
+async function loadSourceList() {
+  const container = document.getElementById('sourceList');
+  try {
+    const res = await fetch('/api/sources');
+    const data = await res.json();
+    if (!data.sources || data.sources.length === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">暂无自定义来源</div>';
+      return;
+    }
+    container.innerHTML = data.sources.map((s, i) => {
+      const label = s.autoDetected
+        ? `<span style="color:var(--success)">[自动检测]</span> ${escapeHtml(s.label)}`
+        : escapeHtml(s.label);
+      const removeBtn = s.autoDetected
+        ? ''
+        : `<button style="color:var(--accent);font-size:12px;padding:2px 8px" onclick="removeSource(${s.index})">移除</button>`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg-card);border-radius:6px;font-size:12px">
+        <span title="${escapeHtml(s.path)}">${label}</span>
+        ${removeBtn}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--accent)">加载失败</div>';
+  }
+}
+
+async function addSource() {
+  const input = document.getElementById('newSourceInput');
+  const path = input.value.trim();
+  if (!path) { showToast('请输入目录路径', 'warning'); return; }
+  try {
+    const res = await fetch('/api/sources/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, label: null }),
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.message, 'error'); return; }
+    showToast(`已添加来源，发现 ${data.total} 个 skill`, 'success');
+    input.value = '';
+    await loadSourceList();
+    await refreshSkills();
+    renderAll();
+  } catch (e) {
+    showToast('添加失败: ' + e.message, 'error');
+  }
+}
+
+async function removeSource(index) {
+  try {
+    const res = await fetch('/api/sources/' + index, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.error) { showToast(data.message, 'error'); return; }
+    showToast('来源已移除', 'success');
+    await loadSourceList();
+    await refreshSkills();
+    renderAll();
+  } catch (e) {
+    showToast('移除失败: ' + e.message, 'error');
+  }
+}
+
+// ── Scan folder modal ───────────────────────────────────────────────
+let lastScanPath = null;
+
+function openScanFolder() {
+  document.getElementById('scanPathInput').value = lastScanPath || '';
+  document.getElementById('scanResults').innerHTML = '<div style="font-size:12px;color:var(--text-muted)">输入路径后点击扫描</div>';
+  document.getElementById('btnAddScanAsSource').disabled = true;
+  document.getElementById('scanModal').classList.add('show');
+}
+function closeScanFolder() {
+  document.getElementById('scanModal').classList.remove('show');
+}
+
+async function doScanFolder() {
+  const path = document.getElementById('scanPathInput').value.trim();
+  if (!path) { showToast('请输入文件夹路径', 'warning'); return; }
+  lastScanPath = path;
+  const resultsDiv = document.getElementById('scanResults');
+  resultsDiv.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const res = await fetch('/api/scan-directory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      resultsDiv.innerHTML = `<div style="color:var(--accent)">${escapeHtml(data.message)}</div>`;
+      return;
+    }
+    if (data.total === 0) {
+      resultsDiv.innerHTML = '<div style="color:var(--text-muted)">该目录下未发现任何 skill（需包含 SKILL.md 文件的子目录）</div>';
+      document.getElementById('btnAddScanAsSource').disabled = true;
+      return;
+    }
+    resultsDiv.innerHTML = `
+      <div style="font-size:12px;color:var(--success);margin-bottom:8px">发现 ${data.total} 个 skill：</div>
+      ${data.skills.map(s => `
+        <div style="padding:8px 12px;background:var(--bg-card);border-radius:6px;margin-bottom:4px;font-size:12px">
+          <strong>${escapeHtml(s.name)}</strong>
+          <span style="color:var(--text-muted)">${escapeHtml((s.description||'').slice(0,80))}</span>
+          <span style="color:var(--text-muted);float:right">${(s.size/1024).toFixed(1)} KB</span>
+        </div>
+      `).join('')}
+    `;
+    document.getElementById('btnAddScanAsSource').disabled = false;
+  } catch (e) {
+    resultsDiv.innerHTML = `<div style="color:var(--accent)">扫描失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function addScanAsSource() {
+  if (!lastScanPath) return;
+  const label = lastScanPath.replace(/[/\\]$/, '').split(/[/\\]/).pop() || lastScanPath;
+  try {
+    const res = await fetch('/api/sources/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: lastScanPath, label }),
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.message, 'error'); return; }
+    showToast(`已添加来源，共 ${data.total} 个 skill`, 'success');
+    closeScanFolder();
+    await refreshSkills();
+    renderAll();
+  } catch (e) {
+    showToast('添加失败: ' + e.message, 'error');
+  }
+}
+
+// ── Data loading ─────────────────────────────────────────────────────
+async function refreshSkills() {
+  try {
+    state.skills = (await api.getSkills()).skills || [];
+  } catch (e) {
+    console.error('Failed to load skills:', e);
+    showToast('加载 skill 列表失败', 'error');
+  }
+}
+
+async function loadInitial() {
+  // Load config first
+  try {
+    state.config = await api.getConfig();
+  } catch (e) { /* use defaults */ }
+
+  document.getElementById('projectLabel').textContent = state.config.projectPath || '未设置';
+
+  // Initial scan
+  try {
+    const scanResult = await api.scan();
+    state.skills = (await api.getSkills()).skills || [];
+  } catch (e) {
+    console.error('Scan failed:', e);
+    showToast('扫描 skill 失败，请检查目录权限', 'error');
+  }
+}
+
+function renderAll() {
+  renderSourceFilters();
+  renderStatusFilters();
+  const filtered = renderSkillGrid();
+  document.getElementById('statsLabel').textContent = `显示 ${filtered.length} / ${state.skills.length} 个 skill`;
+}
+
+// ── Event bindings ──────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  state.filters.search = e.target.value.toLowerCase();
+  renderAll();
+});
+
+document.getElementById('btnRescan').addEventListener('click', async () => {
+  document.getElementById('btnRescan').disabled = true;
+  document.getElementById('btnRescan').textContent = '⏳ 扫描中...';
+  try {
+    await api.scan();
+    state.skills = (await api.getSkills()).skills || [];
+    renderAll();
+    showToast('扫描完成', 'success');
+  } catch (e) {
+    showToast('扫描失败', 'error');
+  }
+  document.getElementById('btnRescan').disabled = false;
+  document.getElementById('btnRescan').textContent = '🔄 重新扫描';
+});
+
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+document.getElementById('btnCancelSettings').addEventListener('click', closeSettings);
+document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
+document.getElementById('btnAddSource').addEventListener('click', addSource);
+document.getElementById('btnScanFolder').addEventListener('click', openScanFolder);
+document.getElementById('btnDoScan').addEventListener('click', doScanFolder);
+document.getElementById('btnCloseScan').addEventListener('click', closeScanFolder);
+document.getElementById('btnAddScanAsSource').addEventListener('click', addScanAsSource);
+document.getElementById('overlay').addEventListener('click', closeDetail);
+document.getElementById('btnCloseDetail').addEventListener('click', closeDetail);
+
+// Keyboard shortcut: Escape to close detail/settings
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (state.view === 'detail') { closeDetail(); return; }
+    if (document.getElementById('settingsModal').classList.contains('show')) { closeSettings(); return; }
+    if (document.getElementById('scanModal').classList.contains('show')) { closeScanFolder(); }
+  }
+});
+
+// ── Expose to global scope (needed by inline event handlers) ──────
+window.escapeHtml = escapeHtml;
+window.openDetail = openDetail;
+window.handleToggle = handleToggle;
+window.removeSource = removeSource;
+
+// ── Init ─────────────────────────────────────────────────────────────
+(async function init() {
+  await loadInitial();
+  renderAll();
+})();
+</script>
+</body>
+</html>
