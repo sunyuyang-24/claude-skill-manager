@@ -454,6 +454,7 @@ input { font: inherit; }
   <div class="detail-footer">
     <button class="btn btn-primary" id="detailBtnToggleUser"></button>
     <button class="btn btn-secondary" id="detailBtnToggleProject"></button>
+    <button class="btn btn-secondary" id="detailBtnTranslate" style="margin-left:auto">🌐 翻译为中文</button>
   </div>
 </div>
 
@@ -488,6 +489,9 @@ input { font: inherit; }
     <div style="display:flex;gap:8px">
       <input type="text" id="scanPathInput" placeholder="例如: D:\agent-skills\skills" style="flex:1" autocomplete="off">
       <button class="btn btn-primary" id="btnDoScan">扫描</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" id="driveButtons">
+      <span style="font-size:11px;color:var(--text-muted);line-height:28px">快速选择：</span>
     </div>
     <div id="scanResults" style="margin-top:12px;max-height:350px;overflow-y:auto">
       <div style="font-size:12px;color:var(--text-muted)">输入路径后点击扫描</div>
@@ -707,12 +711,20 @@ function showToast(message, type = 'info') {
 // ── Render ───────────────────────────────────────────────────────────
 function renderSourceFilters() {
   const container = document.getElementById('sourceFilters');
-  // Collect unique source types
   const types = [...new Set(state.skills.map(s => s.sourceType))];
-  // Ensure all current active filters are shown
   for (const t of state.filters.sources) { if (!types.includes(t)) types.push(t); }
 
   container.querySelectorAll('.filter-chip').forEach(el => el.remove());
+
+  // "全部" chip — clears all source filters
+  const allChip = document.createElement('div');
+  allChip.className = 'filter-chip' + (state.filters.sources.size === 0 ? ' active' : '');
+  allChip.innerHTML = `<span class="dot" style="background:var(--accent)"></span>全部`;
+  allChip.addEventListener('click', () => {
+    state.filters.sources.clear();
+    renderAll();
+  });
+  container.appendChild(allChip);
 
   for (const type of types) {
     if (type === 'unknown') continue;
@@ -861,7 +873,16 @@ async function openDetail(name) {
 function renderDetail(skill) {
   document.getElementById('detailName').textContent = skill.displayName || skill.name;
   document.getElementById('detailBody').classList.remove('loading');
-  document.getElementById('detailBody').innerHTML = renderMarkdown(skill.skillMdBody || skill.skillMdContent || '');
+  const rawContent = skill.skillMdBody || skill.skillMdContent || '';
+  state.translatedContent = null;
+  document.getElementById('detailBody').innerHTML = renderMarkdown(rawContent);
+
+  // Translate button
+  const btnTrans = document.getElementById('detailBtnTranslate');
+  btnTrans.textContent = '🌐 翻译为中文';
+  btnTrans.onclick = () => translateContent(rawContent);
+  btnTrans.disabled = false;
+  btnTrans.style.display = '';
 
   // Meta tags
   const meta = document.getElementById('detailMeta');
@@ -890,6 +911,44 @@ function renderDetail(skill) {
   }
 }
 
+async function translateContent(rawContent) {
+  const btnTrans = document.getElementById('detailBtnTranslate');
+  const body = document.getElementById('detailBody');
+
+  // If already showing translated, revert to original
+  if (state.translatedContent) {
+    body.innerHTML = renderMarkdown(rawContent);
+    state.translatedContent = null;
+    btnTrans.textContent = '🌐 翻译为中文';
+    return;
+  }
+
+  // Otherwise translate
+  btnTrans.disabled = true;
+  btnTrans.textContent = '⏳ 翻译中...';
+  try {
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: rawContent, targetLang: 'zh-CN', sourceLang: 'en' }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('翻译失败: ' + data.message, 'error');
+      btnTrans.disabled = false;
+      btnTrans.textContent = '🌐 翻译为中文';
+      return;
+    }
+    state.translatedContent = data.translated;
+    body.innerHTML = renderMarkdown(data.translated);
+    btnTrans.textContent = '🔄 显示原文';
+  } catch (e) {
+    showToast('翻译请求失败', 'error');
+    btnTrans.textContent = '🌐 翻译为中文';
+  }
+  btnTrans.disabled = false;
+}
+
 async function handleDetailToggle(name, scope, enable) {
   const result = enable
     ? await api.enableSkill(name, scope)
@@ -898,7 +957,7 @@ async function handleDetailToggle(name, scope, enable) {
   if (result.success) {
     showToast(result.message, 'success');
     await refreshSkills();
-    // Update detail panel
+    renderAll();
     const skill = await api.getSkill(name);
     renderDetail(skill);
   } else {
@@ -910,6 +969,7 @@ function closeDetail() {
   state.view = 'list';
   state.selectedSkill = null;
   state.selectedSkillData = null;
+  state.translatedContent = null;
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('detailPanel').classList.remove('show');
 }
@@ -924,6 +984,7 @@ async function handleToggle(name, scope, checkbox) {
   if (result.success) {
     showToast(result.message, 'success');
     await refreshSkills();
+    renderAll();
   } else {
     showToast(result.message, 'error');
     checkbox.checked = !enable; // revert
@@ -1021,10 +1082,86 @@ async function removeSource(index) {
 // ── Scan folder modal ───────────────────────────────────────────────
 let lastScanPath = null;
 
+function detectDrives() {
+  // Common Windows drive letters + common skill paths
+  const drives = [];
+  for (let i = 67; i <= 90; i++) {
+    const letter = String.fromCharCode(i);
+    drives.push({ letter, path: letter + ':\\' });
+  }
+  return drives;
+}
+
+function populateDriveButtons() {
+  const container = document.getElementById('driveButtons');
+  container.querySelectorAll('.drive-btn').forEach(el => el.remove());
+
+  const drives = detectDrives();
+
+  // Build common paths from config
+  const homedir = state.config.userSkillsDir ? state.config.userSkillsDir.replace(/\\.claude\\skills$/, '') : '';
+  const commonPaths = [];
+  if (state.config.userSkillsDir) {
+    commonPaths.push({ label: '用户 Skills', path: state.config.userSkillsDir });
+  }
+  if (state.config.agentsSkillsDir) {
+    commonPaths.push({ label: 'Agent Skills', path: state.config.agentsSkillsDir });
+  }
+  if (homedir) {
+    commonPaths.push({ label: '插件市场', path: homedir + '\\.claude\\plugins\\marketplaces' });
+  }
+
+  for (const d of drives) {
+    const btn = document.createElement('button');
+    btn.className = 'drive-btn';
+    btn.style.cssText = 'padding:4px 10px;font-size:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);cursor:pointer;transition:all 0.15s';
+    btn.textContent = d.letter + ':';
+    btn.title = d.path;
+    btn.addEventListener('click', () => {
+      document.getElementById('scanPathInput').value = d.path;
+    });
+    btn.addEventListener('mouseenter', () => {
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text-secondary)';
+    });
+    container.appendChild(btn);
+  }
+
+  for (const cp of commonPaths) {
+    const sep = document.createElement('span');
+    sep.textContent = '·';
+    sep.style.cssText = 'color:var(--text-muted);line-height:28px;margin:0 2px';
+    container.appendChild(sep);
+
+    const btn = document.createElement('button');
+    btn.className = 'drive-btn';
+    btn.style.cssText = 'padding:4px 10px;font-size:11px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;transition:all 0.15s';
+    btn.textContent = cp.label;
+    btn.title = cp.path;
+    btn.addEventListener('click', () => {
+      document.getElementById('scanPathInput').value = cp.path;
+    });
+    btn.addEventListener('mouseenter', () => {
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text-muted)';
+    });
+    container.appendChild(btn);
+  }
+}
+
 function openScanFolder() {
   document.getElementById('scanPathInput').value = lastScanPath || '';
   document.getElementById('scanResults').innerHTML = '<div style="font-size:12px;color:var(--text-muted)">输入路径后点击扫描</div>';
   document.getElementById('btnAddScanAsSource').disabled = true;
+  populateDriveButtons();
   document.getElementById('scanModal').classList.add('show');
 }
 function closeScanFolder() {
