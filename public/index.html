@@ -16,6 +16,7 @@
   --text-muted: #6b6b80;
   --accent: #e94560;
   --accent-hover: #ff6b85;
+  --accent-dim: rgba(233,69,96,0.15);
   --success: #00c853;
   --warning: #ffc107;
   --border: #2a2a44;
@@ -115,6 +116,8 @@ input { font: inherit; }
   font-size: 13px;
   color: var(--text-secondary);
   transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  user-select: none;
 }
 .filter-chip:hover { background: var(--bg-card); color: var(--text-primary); }
 .filter-chip.active { background: var(--bg-card); color: var(--accent); font-weight: 600; }
@@ -163,6 +166,8 @@ input { font: inherit; }
 /* ── Main Content ─────────────────────────────────── */
 .main {
   flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
 .top-bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -192,7 +197,7 @@ input { font: inherit; }
 
 /* ── Skill Card ───────────────────────────────────── */
 .card {
-  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--bg-card) 85%, var(--bg-primary)) 100%);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-left: 3px solid transparent;
   border-radius: var(--radius-lg);
@@ -201,13 +206,14 @@ input { font: inherit; }
   transition: border-color 0.2s, border-left-color 0.2s, box-shadow 0.2s, transform 0.15s;
   position: relative;
   overflow: hidden;
+  min-width: 0;
 }
 .card::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, transparent), transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -776,22 +782,16 @@ function renderSourceFilters() {
   // "全部" chip
   const allChip = document.createElement('div');
   allChip.className = 'filter-chip' + (!state.filters.source ? ' active' : '');
+  allChip.dataset.source = '';
   allChip.innerHTML = `<span class="dot" style="background:var(--accent)"></span>全部`;
-  allChip.addEventListener('click', () => {
-    state.filters.source = '';
-    renderAll();
-  });
   container.appendChild(allChip);
 
   for (const type of types) {
     if (type === 'unknown') continue;
     const chip = document.createElement('div');
     chip.className = 'filter-chip' + (state.filters.source === type ? ' active' : '');
+    chip.dataset.source = type;
     chip.innerHTML = `<span class="dot" style="background:${sourceColor(type)}"></span>${type}`;
-    chip.addEventListener('click', () => {
-      state.filters.source = state.filters.source === type ? '' : type;
-      renderAll();
-    });
     container.appendChild(chip);
   }
 }
@@ -1349,6 +1349,16 @@ function renderAll() {
 // ── Event bindings ──────────────────────────────────────────────────
 document.getElementById('searchInput').addEventListener('input', (e) => {
   state.filters.search = e.target.value.toLowerCase();
+  renderAll();
+});
+
+document.getElementById('sourceFilters').addEventListener('click', (e) => {
+  const chip = e.target.closest('.filter-chip');
+  if (!chip) return;
+  const value = chip.dataset.source;
+  if (value === undefined) return;
+  const next = (value === '' || state.filters.source === value) ? '' : value;
+  state.filters.source = next;
   renderAll();
 });
 
