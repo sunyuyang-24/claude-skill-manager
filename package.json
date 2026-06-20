@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "start:cli": "node skill-manager.js",
-    "build": "electron-builder --win portable --x64"
+    "build": "electron-builder --win zip --x64"
   },
   "build": {
     "appId": "com.claude.skill-manager",
