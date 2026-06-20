@@ -30,6 +30,7 @@
     }
   },
   "keywords": ["claude-code", "skill-manager", "claude", "skills"],
+  "author": "sunyuyang-24",
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.0.0",
